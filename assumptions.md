@@ -51,12 +51,29 @@ change it. When an assumption is replaced by a sourced fact, move it to the
 
 - **Statement:** daily changes in these US benchmark prices stand in for
   changes in the importer's USD purchase cost.
-- **Limitation (basis risk):** actual purchases are Russian-origin product
-  bought through intermediaries. Their invoice prices are not public, so the
-  gap between proxy and invoice price is not measured. A hedge that looks
-  effective against the proxy may be less effective against real invoices.
+- **Limitation (basis risk):** actual purchases are overwhelmingly
+  Russian-origin product bought through intermediaries; small volumes from
+  China and Korea are not modelled separately. Invoice prices are not public,
+  and the benchmark they are priced against is not known, so the gap between
+  proxy and invoice price is not measured. A hedge that looks effective
+  against the proxy may be less effective against real invoices.
 - **Would change if:** a public price series for Russian-origin product
-  delivered to Mongolia becomes available.
+  delivered to Mongolia becomes available, or the invoice pricing benchmark
+  is identified.
+
+## A6. Purchase units: USD per metric tonne, density at 20 °C. ASSUMPTION
+
+- **Statement:** purchase cost is quoted in USD per metric tonne. Converting
+  to litres uses product density measured at 20 °C:
+  litres per tonne = 1000 / density (kg/L at 20 °C).
+- **Density values:** NOT YET SOURCED. TODO: a public source for AI-92 and
+  diesel density at 20 °C, or run a stated range as a sensitivity.
+- **Temperature bases differ:** the US proxy contracts are in US gallons
+  (60 °F reference), purchase volumes use 20 °C, and the retail litre's
+  reference temperature is not stated. This mismatch is a limitation.
+- **Affects:** USD cost per litre, and so margin per litre.
+- **Would change if:** invoices are confirmed to use a different unit or
+  reference temperature.
 
 ## A5. Public data only; no company named. ASSUMPTION / CONSTRAINT
 
@@ -75,6 +92,9 @@ change it. When an assumption is replaced by a sourced fact, move it to the
   alpha grid apply to AI-92 at all, or only to the less-regulated products
   (diesel, Euro-92, 95)?
 - Fixed costs per litre (MNT): source or assumption still needed.
+- Invoice pricing benchmark: unknown. It decides which public proxy best
+  tracks real cost.
+- Product density at 20 °C (A6): source or range still needed.
 - USD/MNT source: `USDMNT=X`, or Bank of Mongolia rates if `USDMNT=X` fails
   the Stage 1 checks.
 

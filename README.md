@@ -83,8 +83,13 @@ TODO: list each file in `outputs/` and what it means.
 ## 6. Limitations
 
 - **Basis risk:** `HO=F` and `RB=F` are US benchmark contracts. Real invoices
-  are for Russian-origin product bought through intermediaries, and their
-  prices are not public. The proxy-versus-invoice gap is not measured.
+  are overwhelmingly for Russian-origin product bought through
+  intermediaries; their prices and pricing benchmark are not public. The
+  proxy-versus-invoice gap is not measured.
+- **Units and temperature:** purchases are assumed to be priced per metric
+  tonne, with density at 20 °C, while the proxies are quoted per US gallon
+  (60 °F). Converting between them needs density values (see
+  `assumptions.md`, A6).
 - **Continuous futures series:** Yahoo `=F` tickers roll between contract
   months, so the series can jump on roll dates. These jumps are flagged in
   Stage 1. TODO: how they are handled.
