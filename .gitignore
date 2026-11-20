@@ -1,0 +1,17 @@
+# Downloaded market data is not redistributed: rerun scripts/ to fetch it.
+data/raw/*
+data/clean/*
+!data/raw/.gitkeep
+!data/clean/.gitkeep
+
+# Python / Jupyter
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Secrets and local environment
+.env
+*.key
+
+# macOS
+.DS_Store

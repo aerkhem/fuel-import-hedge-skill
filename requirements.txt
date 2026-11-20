@@ -1,0 +1,5 @@
+# Tested 2026-11-19 with /opt/anaconda3/bin/python (Anaconda base) on macOS arm64.
+# Stage 1 (data assembly). Stage 2 will add cvxpy.
+yfinance==1.8.0
+pandas==2.2.2
+numpy==1.26.4
