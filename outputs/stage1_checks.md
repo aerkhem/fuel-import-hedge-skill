@@ -1,6 +1,9 @@
 # Stage 1 checks (part C) - integrity, weekdays, moves
 
 - Script: `scripts/stage1_checks.py`
+- Input: `data/raw/{BZ=F,HO=F,RB=F}.csv` and `data/raw/bom_currency-rate-USD.xlsx` (untouched)
+
+- Script: `scripts/stage1_checks.py`
 - Input: `data/raw/{BZ=F,HO=F,RB=F}.csv` (untouched)
 - Output: `outputs/stage1_checks.md`
 
@@ -647,6 +650,33 @@ Summary (tentative):
 |---|---|
 | First day after expiry | 3.8643 |
 | All other rows | 1.7133 |
+
+## USD/MNT: Bank of Mongolia
+
+- Input: `data/raw/bom_currency-rate-USD.xlsx`, columns `Date`, `USD - US dollar` (untouched; no fill/drop/align).
+- Source: https://www.mongolbank.mn/en/currency-rates (retrieved 2026-11-20).
+- User spot-checked: 2021-09-01 = 2848.60 and 2026-08-31 = 3595.14 on the website.
+
+| Check | Result |
+|---|---|
+| Row count | 1826 |
+| Date range | 2021-09-01 .. 2026-08-31 |
+| Duplicate dates | 0 |
+| Timestamps not 08:00 | 0 (date part used for all checks below) |
+| Minimum | 2848.44 on 2021-11-24 |
+| Maximum | 3595.66 on 2026-08-27 |
+| Share of unchanged days (weekdays only) | 0.056 |
+| Longest run of unchanged weekdays | 6 (2025-07-10 .. 2025-07-17) |
+
+**Top 5 absolute % daily moves (weekdays only)**
+
+| Date | Abs % move |
+|---|---|
+| 2022-04-05 | 0.818 |
+| 2022-04-01 | 0.762 |
+| 2022-10-04 | 0.495 |
+| 2022-09-26 | 0.47 |
+| 2022-09-19 | 0.46 |
 
 ## USDMNT=X
 

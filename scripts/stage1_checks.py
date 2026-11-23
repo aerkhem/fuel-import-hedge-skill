@@ -268,9 +268,121 @@ def analyze(ticker):
     }
 
 
-def render(results):
+def analyze_bom_usd():
+    """USD/MNT: Bank of Mongolia. Reads the xlsx as-is; no fill/drop/align."""
+    path = os.path.join(RAW_DIR, "bom_currency-rate-USD.xlsx")
+    df = pd.read_excel(path)
+    df = df.rename(columns={"USD - US dollar": "rate"})
+    date = pd.to_datetime(df["Date"])
+    rate = df["rate"].astype(float)
+
+    n_rows = int(len(df))
+    date_min = date.min()
+    date_max = date.max()
+    dup_dates = int(date.duplicated().sum())
+
+    # Every timestamp is 08:00 (date part used for the analysis).
+    non_0800 = int((date.dt.hour != 8).sum())
+    # Date-only series (no fill/drop/align) ordered ascending by date.
+    s = pd.Series(rate.values, index=pd.DatetimeIndex(date).normalize())
+    s = s[~s.index.duplicated()].sort_index()
+
+    arg_min = s.idxmin()
+    arg_max = s.idxmax()
+    min_val = float(s.loc[arg_min])
+    max_val = float(s.loc[arg_max])
+
+    # Weekday-only unchanged days: value equals the previous weekday's value.
+    wd = s[s.index.dayofweek < 5]
+    unchanged = (wd == wd.shift(1)).dropna()
+    share = float(unchanged.mean())
+
+    # Longest run of consecutive unchanged weekdays (with dates).
+    run = 0
+    best_run = 0
+    best_dates = []
+    cur_dates = []
+    for dt, v in unchanged.items():
+        if v:
+            run += 1
+            cur_dates.append(dt)
+        else:
+            if run > best_run:
+                best_run = run
+                best_dates = cur_dates
+            run = 0
+            cur_dates = []
+    if run > best_run:
+        best_run = run
+        best_dates = cur_dates
+
+    # Top 5 absolute % daily moves (on weekdays, date-part ordering).
+    moves = wd.pct_change() * 100.0
+    moves = moves.dropna().abs().sort_values(ascending=False)
+    top5 = [
+        (dt.strftime("%Y-%m-%d"), round(float(m), 3))
+        for dt, m in moves.head(5).items()
+    ]
+
+    return {
+        "rows": n_rows,
+        "date_min": date_min,
+        "date_max": date_max,
+        "non_0800": non_0800,
+        "dup_dates": dup_dates,
+        "min_date": arg_min.strftime("%Y-%m-%d"),
+        "min_val": min_val,
+        "max_date": arg_max.strftime("%Y-%m-%d"),
+        "max_val": max_val,
+        "unchanged_share": share,
+        "longest_run": best_run,
+        "longest_dates": [d.strftime("%Y-%m-%d") for d in best_dates],
+        "top5": top5,
+    }
+
+
+def render_bom_usd(r):
+    lines = []
+    lines.append("## USD/MNT: Bank of Mongolia")
+    lines.append("")
+    lines.append("- Input: `data/raw/bom_currency-rate-USD.xlsx`, columns "
+                 "`Date`, `USD - US dollar` (untouched; no fill/drop/align).")
+    lines.append("- Source: https://www.mongolbank.mn/en/currency-rates "
+                 "(retrieved 2026-11-20).")
+    lines.append("- User spot-checked: 2021-09-01 = 2848.60 and "
+                 "2026-08-31 = 3595.14 on the website.")
+    lines.append("")
+    lines.append("| Check | Result |")
+    lines.append("|---|---|")
+    lines.append(f"| Row count | {r['rows']} |")
+    lines.append(f"| Date range | {r['date_min'].date()} .. {r['date_max'].date()} |")
+    lines.append(f"| Duplicate dates | {r['dup_dates']} |")
+    lines.append(f"| Timestamps not 08:00 | {r['non_0800']} "
+                 "(date part used for all checks below) |")
+    lines.append(f"| Minimum | {r['min_val']} on {r['min_date']} |")
+    lines.append(f"| Maximum | {r['max_val']} on {r['max_date']} |")
+    lines.append(f"| Share of unchanged days (weekdays only) | "
+                 f"{r['unchanged_share']:.3f} |")
+    lines.append(f"| Longest run of unchanged weekdays | {r['longest_run']} "
+                 f"({r['longest_dates'][0]} .. {r['longest_dates'][-1]}) |")
+    lines.append("")
+    lines.append("**Top 5 absolute % daily moves (weekdays only)**")
+    lines.append("")
+    lines.append("| Date | Abs % move |")
+    lines.append("|---|---|")
+    for d, m in r["top5"]:
+        lines.append(f"| {d} | {m} |")
+    lines.append("")
+    return lines
+
+
+def render(results, bom_result):
     lines = []
     lines.append("# Stage 1 checks (part C) - integrity, weekdays, moves")
+    lines.append("")
+    lines.append(f"- Script: `scripts/stage1_checks.py`")
+    lines.append("- Input: `data/raw/{BZ=F,HO=F,RB=F}.csv` and "
+                 "`data/raw/bom_currency-rate-USD.xlsx` (untouched)")
     lines.append("")
     lines.append(f"- Script: `scripts/stage1_checks.py`")
     lines.append("- Input: `data/raw/{BZ=F,HO=F,RB=F}.csv` (untouched)")
@@ -402,6 +514,7 @@ def render(results):
         lines.append(f"| All other rows | {roll['mean_others']:.4f} |")
         lines.append("")
 
+    lines += render_bom_usd(bom_result)
     lines.append("## USDMNT=X")
     lines.append("")
     lines.append("- Download call (`scripts/stage1_download.py`): `yf.Ticker(\"USDMNT=X\")"
@@ -420,7 +533,8 @@ def render(results):
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     results = [analyze(t) for t in TICKERS]
-    md = render(results)
+    bom = analyze_bom_usd()
+    md = render(results, bom)
     with open(OUT_PATH, "w") as fh:
         fh.write(md)
     for r in results:
@@ -440,6 +554,11 @@ def main():
                 top1pct=r["top10"][0][3],
             )
         )
+    print(f"[check] BOM_USD: rows={bom['rows']} range={bom['date_min'].date()}.."
+          f"{bom['date_max'].date()} dup={bom['dup_dates']} not0800={bom['non_0800']} "
+          f"min={bom['min_val']}@{bom['min_date']} max={bom['max_val']}@{bom['max_date']} "
+          f"unchanged_share={bom['unchanged_share']:.3f} "
+          f"longest_run={bom['longest_run']}")
     print(f"[check] wrote {OUT_REL}")
 
 

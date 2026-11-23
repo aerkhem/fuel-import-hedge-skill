@@ -83,6 +83,36 @@ change it. When an assumption is replaced by a sourced fact, move it to the
 - **Affects:** what can be claimed. Results describe a stylised importer,
   not any real company's position.
 
+## A7. Futures roll adjustment: intraday return on roll days. ASSUMPTION (user decision, 2026-11-23)
+
+- **Statement:** on the first trading day after each expected contract
+  expiry (rules in `outputs/stage1_checks.md`), the daily return is
+  Close_t / Open_t − 1 instead of Close_t / Close_{t−1} − 1. This removes
+  the overnight gap, which contains the switch between contracts.
+- **Why:** Stage 1 found mean absolute moves 1.5× to 2.3× larger on these
+  days, and every 21-day window crosses a roll.
+- **Limitation:** it also removes any genuine overnight news on those days.
+  Raw (unadjusted) returns are reported as a sensitivity.
+
+## A8. FX pairing: same calendar date. ASSUMPTION (user decision, 2026-11-23)
+
+- **Statement:** each futures close is paired with the Bank of Mongolia
+  official rate dated the same calendar date. That rate is set during the
+  Ulaanbaatar day, before the New York close.
+
+## A9. CVaR level β = 0.90, with 0.95 as a check. ASSUMPTION (user decision, 2026-11-23)
+
+- **Statement:** β is the CVaR confidence level (α is the pass-through
+  parameter). With about 150 weekly windows in the design period, β = 0.90
+  leaves about 15 tail scenarios; β = 0.95 leaves about 8 and is reported
+  as a sensitivity.
+
+## A10. First Stage 2 scope: diesel, design period. ASSUMPTION (user decision, 2026-11-23)
+
+- **Statement:** the first run covers diesel (HO=F cost proxy) hedged with
+  Brent (BZ=F), α ∈ {0, 0.25, 0.5, 0.75, 1}, design period only. The test
+  period and gasoline (RB=F) follow.
+
 ---
 
 ## Open questions (not yet assumptions)
