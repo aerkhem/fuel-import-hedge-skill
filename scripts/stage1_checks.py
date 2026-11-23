@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Stage 1 (checks, part B): basic integrity + missing weekdays for
-BZ=F, HO=F, RB=F. Writes outputs/stage1_checks.md.
+Stage 1 (checks, part C): integrity, missing weekdays, top moves and
+USDMNT record for BZ=F, HO=F, RB=F. Writes outputs/stage1_checks.md.
 
 Scope: data assembly only. No modelling. Reads data/raw/ only. No network.
 No installs. Does not fill/drop/align values.
@@ -31,11 +31,20 @@ CLOSE_NOTE = (
     "exchange settlement price."
 )
 
-# CME (NYMEX energy) holiday dates within the data window.
-# Hard-coded, exact; the whole list is labelled "for user verification".
+# Holiday dates within the data window. Hard-coded, exact; all "for user
+# verification". 2025-01-09 is no longer in the holiday list (it HAS a bar).
 JUNETEENTH = {
     "2022-06-20", "2023-06-19", "2024-06-19", "2025-06-19", "2026-06-19",
 }
+MLK_DAY = {
+    "2022-01-17", "2023-01-16", "2024-01-15", "2025-01-20", "2026-01-19",
+}
+PRESIDENTS_DAY = {
+    "2022-02-21", "2023-02-20", "2024-02-19", "2025-02-17", "2026-02-16",
+}
+US_HOL_NO_BAR = MLK_DAY | PRESIDENTS_DAY
+SPECIAL_20250109 = "2025-01-09"
+
 CME_HOLIDAYS = {
     # New Year
     "2023-01-02", "2024-01-01", "2025-01-01", "2026-01-01",
@@ -53,19 +62,112 @@ CME_HOLIDAYS = {
     "2021-11-25", "2022-11-24", "2023-11-23", "2024-11-28", "2025-11-27",
     # Christmas
     "2021-12-24", "2022-12-26", "2023-12-25", "2024-12-25", "2025-12-25",
-    # Special (national day of mourning)
-    "2025-01-09",
 }
 
-HOLIDAY_DATES = {pd.Timestamp(s).normalize() for s in CME_HOLIDAYS}
+# All dates we scan for bars dated on a holiday (CME + US-no-bar + special).
+ALL_HOLIDAY_DATES = {pd.Timestamp(s).normalize() for s in
+                     (CME_HOLIDAYS | US_HOL_NO_BAR | {SPECIAL_20250109})}
 
 
 def classify_missing(date_str):
-    if date_str == "2025-01-09" or date_str in JUNETEENTH:
+    if date_str in JUNETEENTH:
         return "to verify"
+    if date_str in US_HOL_NO_BAR:
+        return "US holiday, no Yahoo bar (CME status to verify)"
     if date_str in CME_HOLIDAYS:
         return "CME holiday (for user verification)"
     return "unexplained"
+
+
+ROLL_RANGE_START = "2021-09-01"
+ROLL_RANGE_END = "2026-08-01"
+
+ROLL_NOTE = (
+    "Roll candidates (tentative; none of these is a confirmed roll). "
+    "HO=F/RB=F: expected expiry = last business day of each calendar month "
+    "(CME rule: last trading day is the last business day of the month before "
+    "the contract month); RB rule to verify by user. Business days = weekdays "
+    "not in HOLIDAYS. BZ=F: NYMEX ch.698 - last UK business day of each "
+    "calendar month, except December uses the second-to-last; weekdays only; "
+    "UK bank holidays not applied; the +/-3-day window absorbs a 1-day shift."
+)
+
+
+def expected_expiries(ticker):
+    """Tentative expected last trading days, 2021-09 .. 2026-08."""
+    months = pd.date_range(ROLL_RANGE_START, ROLL_RANGE_END, freq="MS")
+    expiries = []
+    for m in months:
+        start = m
+        end = m + pd.offsets.MonthEnd(0)
+        weekdays = list(pd.date_range(start, end, freq="B"))
+        if ticker in ("HO=F", "RB=F"):
+            bus = [d for d in weekdays if d.normalize() not in ALL_HOLIDAY_DATES]
+            exp = max(bus)
+        else:  # BZ=F
+            exp = weekdays[-2] if m.month == 12 else weekdays[-1]
+        expiries.append(pd.Timestamp(exp).normalize())
+    return expiries
+
+
+def roll_analysis(ticker, df):
+    """Build the tentative roll-candidates table for one series."""
+    expiries = expected_expiries(ticker)
+    d = df.reset_index(drop=True)
+    date_arr = d["date"].to_numpy()  # sorted ascending
+    close = d["Close"].astype(float)
+    open_ = d["Open"].astype(float)
+    prev_close = close.shift(1)
+    pct = (close / prev_close - 1) * 100.0
+    gap = (open_ / prev_close - 1) * 100.0
+
+    exp_ts = np.array([pd.Timestamp(e).to_datetime64() for e in expiries])
+    # Position in the trading-day timeline = # rows with date <= expiry.
+    expiry_pos = np.searchsorted(date_arr, exp_ts, side="right")
+
+    # First trading day strictly after each expected expiry.
+    first_after = []
+    for e, epos in zip(expiries, expiry_pos):
+        if epos >= len(d):
+            continue  # no data after this expiry (tail of the sample)
+        i = int(epos)
+        first_after.append(
+            {
+                "expiry": pd.Timestamp(e).strftime("%Y-%m-%d"),
+                "date": d.loc[i, "date"].strftime("%Y-%m-%d"),
+                "pct": round(float(pct.iloc[i]), 3),
+                "gap": round(float(gap.iloc[i]), 3),
+            }
+        )
+
+    # Tag each top-10 move: in roll window iff within +/-3 trading days of an
+    # expected expiry (trading-day position distance).
+    moves = pd.DataFrame({"date": d["date"], "pct": pct}).dropna(subset=["pct"])
+    moves = moves.assign(apct=moves["pct"].abs()).sort_values("apct", ascending=False)
+    top10_tagged = []
+    for r in moves.head(10).itertuples(index=False):
+        pos = int(np.searchsorted(date_arr, r.date.to_datetime64(), side="right")) - 1
+        in_win = any(abs(pos - int(ep)) <= 3 for ep in expiry_pos if int(ep) < len(d))
+        top10_tagged.append(
+            (r.date.strftime("%Y-%m-%d"), round(float(r.pct), 3),
+             "in roll window" if in_win else "outside")
+        )
+
+    # Summary: mean |pct| on first-day-after-expiry rows vs all other rows.
+    first_pct = [fa["pct"] for fa in first_after]
+    others = pct.dropna().drop(labels=[int(np.searchsorted(date_arr,
+                pd.Timestamp(fa["date"]).to_datetime64(), side="right")) - 1
+                for fa in first_after], errors="ignore")
+    mean_first = float(np.mean(np.abs(first_pct))) if first_pct else float("nan")
+    mean_others = float(others.abs().mean()) if len(others) else float("nan")
+
+    return {
+        "expiries": expiries,
+        "first_after": first_after,
+        "top10_tagged": top10_tagged,
+        "mean_first": mean_first,
+        "mean_others": mean_others,
+    }
 
 
 def load_series(ticker):
@@ -114,13 +216,37 @@ def analyze(ticker):
         if d not in present
     ]
 
-    # Rows that EXIST on a date in the holiday list (incl. 2025-01-09).
-    exist_mask = df["date"].isin(HOLIDAY_DATES)
-    exist_holiday = df.loc[exist_mask, ["date", "Close"]]
-    exist_holiday_rows = [
-        (r.date.strftime("%Y-%m-%d"), float(r.Close))
-        for r in exist_holiday.itertuples(index=False)
+    # Rows that EXIST on a date in the holiday scan set (incl. 2025-01-09).
+    prev_vol = df[VOL_COL].shift(1)
+    exist_mask = df["date"].isin(ALL_HOLIDAY_DATES)
+    exist_holiday_rows = []
+    for i, dt in df.loc[exist_mask, "date"].items():
+        ds = dt.strftime("%Y-%m-%d")
+        vol = float(df.at[i, VOL_COL])
+        pv = prev_vol.at[i]
+        eq = pd.notna(pv) and (float(pv) == vol)
+        note = ("bar with volume: traded despite NYSE closure (to verify)"
+                if ds == SPECIAL_20250109
+                else "bar dated on holiday (for user verification)")
+        exist_holiday_rows.append((ds, float(df.at[i, "Close"]), vol, eq, note))
+
+    # Top 10 absolute % daily moves on Close (Close_t / Close_{t-1} - 1).
+    close = df["Close"].astype(float)
+    pct = close.pct_change() * 100.0
+    prev = close.shift(1)
+    moves = pd.DataFrame(
+        {"date": df["date"], "prev": prev, "close": close, "pct": pct}
+    ).dropna(subset=["pct"])
+    moves = moves.assign(apct=moves["pct"].abs()).sort_values(
+        "apct", ascending=False
+    )
+    top10 = [
+        (r.date.strftime("%Y-%m-%d"), round(float(r.prev), 4),
+         round(float(r.close), 4), round(float(r.pct), 3))
+        for r in moves.head(10).itertuples(index=False)
     ]
+
+    roll = roll_analysis(ticker, df)
 
     return {
         "ticker": ticker,
@@ -137,12 +263,14 @@ def analyze(ticker):
         "adj_diff_dates": adj_diff_dates,
         "missing_cls": missing_cls,
         "exist_holiday_rows": exist_holiday_rows,
+        "top10": top10,
+        "roll": roll,
     }
 
 
 def render(results):
     lines = []
-    lines.append("# Stage 1 checks (part B) - integrity + missing weekdays")
+    lines.append("# Stage 1 checks (part C) - integrity, weekdays, moves")
     lines.append("")
     lines.append(f"- Script: `scripts/stage1_checks.py`")
     lines.append("- Input: `data/raw/{BZ=F,HO=F,RB=F}.csv` (untouched)")
@@ -150,16 +278,26 @@ def render(results):
     lines.append("")
     lines.append(f"> {CLOSE_NOTE}")
     lines.append("")
-    lines.append("## CME holiday list used (for user verification)")
+    lines.append("## Holiday list used (for user verification)")
     lines.append("")
     lines.append("Legend:")
-    lines.append("- `to verify`: 2025-01-09 (national day of mourning) and Juneteenth dates")
-    lines.append("- `CME holiday (for user verification)`: all other dates in the list")
+    lines.append("- `CME holiday (for user verification)`: the dates below, except Juneteenth")
+    lines.append("- `to verify`: Juneteenth dates")
+    lines.append("- `US holiday, no Yahoo bar (CME status to verify)`: MLK and Presidents' Day")
     lines.append("- `unexplained`: any other missing weekday")
+    lines.append("- 2025-01-09: removed from the list; it HAS a bar (see holiday-bars table)")
     lines.append("")
-    for d in sorted(CME_HOLIDAYS):
-        tag = "to verify" if (d == "2025-01-09" or d in JUNETEENTH) else "CME holiday"
-        lines.append(f"- {d} ({tag})")
+    lines.append("CME holidays:")
+    for d in sorted(CME_HOLIDAYS - JUNETEENTH):
+        lines.append(f"- {d} (CME holiday)")
+    lines.append("")
+    lines.append("Juneteenth (to verify):")
+    for d in sorted(JUNETEENTH):
+        lines.append(f"- {d} (to verify)")
+    lines.append("")
+    lines.append("MLK / Presidents' Day (US holiday, no Yahoo bar; CME status to verify):")
+    for d in sorted(US_HOL_NO_BAR):
+        lines.append(f"- {d} (US holiday, no Yahoo bar)")
     lines.append("")
     lines.append("## Per-series checks")
     lines.append("")
@@ -216,16 +354,65 @@ def render(results):
         else:
             lines.append("None.")
         lines.append("")
-        lines.append("**Bars dated on a CME holiday date**")
+        lines.append("**Bars dated on a holiday date**")
         lines.append("")
         if r["exist_holiday_rows"]:
-            lines.append("| Bar date | Close |")
-            lines.append("|---|---|")
-            for d, c in r["exist_holiday_rows"]:
-                lines.append(f"| {d} | {c} |")
+            lines.append("| Bar date | Close | Volume | Volume equals previous row | Note |")
+            lines.append("|---|---|---|---|---|")
+            for d, c, v, eq, note in r["exist_holiday_rows"]:
+                lines.append(f"| {d} | {c} | {v} | {eq} | {note} |")
         else:
             lines.append("None.")
         lines.append("")
+        lines.append("**Top 10 absolute % daily moves on Close**")
+        lines.append("")
+        lines.append("| Date | Prev Close | Close | % move |")
+        lines.append("|---|---|---|---|")
+        for d, p, c, pct in r["top10"]:
+            lines.append(f"| {d} | {p} | {c} | {pct} |")
+        lines.append("")
+        roll = r["roll"]
+        lines.append("**Roll candidates (tentative)**")
+        lines.append("")
+        lines.append(f"> {ROLL_NOTE}")
+        lines.append("")
+        lines.append("Expected expiries (monthly, 2021-09 .. 2026-08) and the "
+                     "first trading day after each:")
+        lines.append("")
+        lines.append("| Expected expiry | First trading day after | Close % move | "
+                     "Overnight gap (Open_t/Close_t-1 - 1) |")
+        lines.append("|---|---|---|---|")
+        for fa in roll["first_after"]:
+            lines.append(f"| {fa['expiry']} | {fa['date']} | {fa['pct']} | "
+                         f"{fa['gap']} |")
+        lines.append("")
+        lines.append("Top-10 moves tagged against the roll window (+/-3 trading "
+                     "days of an expected expiry; tentative, not confirmed):")
+        lines.append("")
+        lines.append("| Date | % move | Roll window |")
+        lines.append("|---|---|---|")
+        for td, pct, tag in roll["top10_tagged"]:
+            lines.append(f"| {td} | {pct} | {tag} |")
+        lines.append("")
+        lines.append("Summary (tentative):")
+        lines.append("")
+        lines.append("| Group | Mean absolute Close % move |")
+        lines.append("|---|---|")
+        lines.append(f"| First day after expiry | {roll['mean_first']:.4f} |")
+        lines.append(f"| All other rows | {roll['mean_others']:.4f} |")
+        lines.append("")
+
+    lines.append("## USDMNT=X")
+    lines.append("")
+    lines.append("- Download call (`scripts/stage1_download.py`): `yf.Ticker(\"USDMNT=X\")"
+                 ".history(start=\"2021-09-01\", end=\"2026-09-01\", auto_adjust=False,"
+                 " actions=False, timeout=30)`, retried 3x.")
+    lines.append("- Error: `YFPricesMissingError: $USDMNT=X: possibly delisted; no price "
+                 "data found (1d 2021-09-01 -> 2026-09-01)` on all 3 attempts.")
+    lines.append("- Yahoo offers only 1d/5d periods for this ticker (user-confirmed "
+                 "2026-11-20), so no historical daily series is available; USDMNT is "
+                 "excluded from Stage 1. Bank of Mongolia rates to be supplied separately.")
+    lines.append("")
 
     return "\n".join(lines)
 
@@ -240,14 +427,17 @@ def main():
         counts = Counter(c for _, c in r["missing_cls"])
         print(
             "[check] {t}: missing={n} (to_verify={vfy}, cme={cme}, "
-            "unexpl={ux}) on_holiday={oh} zero_vol={zv}".format(
+            "us_no_bar={us}, unexpl={ux}) on_holiday={oh} "
+            "top1={top1date} {top1pct}%".format(
                 t=r["ticker"],
                 n=len(r["missing_cls"]),
                 vfy=counts["to verify"],
                 cme=counts["CME holiday (for user verification)"],
+                us=counts["US holiday, no Yahoo bar (CME status to verify)"],
                 ux=counts["unexplained"],
                 oh=len(r["exist_holiday_rows"]),
-                zv=r["zero_vol"],
+                top1date=r["top10"][0][0],
+                top1pct=r["top10"][0][3],
             )
         )
     print(f"[check] wrote {OUT_REL}")
