@@ -61,6 +61,14 @@ change it. When an assumption is replaced by a sourced fact, move it to the
   delivered to Mongolia becomes available, or the invoice pricing benchmark
   is identified.
 
+## A5. Public data only; no company named. ASSUMPTION / CONSTRAINT
+
+- **Statement:** all inputs come from public sources. The importer is
+  stylised and is not named anywhere in this repository, the report or the
+  demo.
+- **Affects:** what can be claimed. Results describe a stylised importer,
+  not any real company's position.
+
 ## A6. Purchase units: USD per metric tonne, density at 20 °C. ASSUMPTION
 
 - **Statement:** purchase cost is quoted in USD per metric tonne. Converting
@@ -74,14 +82,6 @@ change it. When an assumption is replaced by a sourced fact, move it to the
 - **Affects:** USD cost per litre, and so margin per litre.
 - **Would change if:** invoices are confirmed to use a different unit or
   reference temperature.
-
-## A5. Public data only; no company named. ASSUMPTION / CONSTRAINT
-
-- **Statement:** all inputs come from public sources. The importer is
-  stylised and is not named anywhere in this repository, the report or the
-  demo.
-- **Affects:** what can be claimed. Results describe a stylised importer,
-  not any real company's position.
 
 ## A7. Futures roll adjustment: hedge leg only. ASSUMPTION (user decision, 2026-11-23; revised same day)
 

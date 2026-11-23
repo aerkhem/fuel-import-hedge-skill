@@ -1,5 +1,7 @@
-# Tested 2026-11-19 with /opt/anaconda3/bin/python (Anaconda base) on macOS arm64.
-# Stage 1 (data assembly). Stage 2 will add cvxpy.
+# Tested 2026-11-19 to 2026-11-23 with /opt/anaconda3/bin/python (Anaconda base) on macOS arm64.
+# Stage 1 (data assembly) and Stage 2 (hedge ratios). openpyxl reads the Bank of Mongolia xlsx.
 yfinance==1.8.0
 pandas==2.2.2
 numpy==1.26.4
+openpyxl==3.1.2
+cvxpy==1.7.3
