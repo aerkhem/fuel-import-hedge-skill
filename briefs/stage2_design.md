@@ -14,10 +14,13 @@ no gasoline yet.
   proxy, USD/gal): use Open and Close; dates = New York date part.
 - `data/raw/bom_currency-rate-USD.xlsx` (Bank of Mongolia, MNT per USD):
   date part of "Date", column "USD - US dollar".
-- Roll days: the first trading day after each expected expiry, computed as
-  in `scripts/stage1_checks.py` (HO: last business day of each month; BZ:
-  last UK business day of each month, December second-to-last; weekdays
-  only, HOLIDAYS list for HO). Reuse that logic; do not re-derive it.
+- Roll days (Brent hedge leg only, A7): the first trading row of each
+  calendar month except January, plus the last trading row of December.
+  Do not read `scripts/stage1_checks.py`; this rule is equivalent to it.
+- File formats: the CSVs have columns Date,Open,High,Low,Close,Adj Close,
+  Volume; Date looks like `2021-09-01 00:00:00-04:00` (take the first 10
+  characters). The xlsx has columns `Date` (datetime, 08:00) and
+  `USD - US dollar`. No need to inspect the files further.
 - Design period: 2021-09-01 to 2024-08-31.
 If any input is missing or a date has no FX rate, stop and report it.
 
@@ -26,9 +29,10 @@ If any input is missing or a date has no FX rate, stop and report it.
    design period (stop if not). Window s starts at trading row i and ends at
    row i + 21; starts every 5 rows; the end row must be on or before
    2024-08-31. Windows overlap: say so in the output.
-2. **Adjusted prices.** Daily return r_t = Close_t / Close_{t−1} − 1, except
-   on roll days r_t = Close_t / Open_t − 1 (A7). Adjusted end price
-   P1 = P0 × Π (1 + r_t) over the 21 days, P0 = Close at the start row.
+2. **Prices at window end.** Diesel (HO): raw Close at row i + 21 (no
+   adjustment, A7). Brent (BZ): daily return r_t = Close_t / Close_{t−1} − 1,
+   except on roll days r_t = Close_t / Open_t − 1; adjusted end price
+   B1 = B0 × Π (1 + r_t) over the 21 days, B0 = Close at the start row.
 3. **Margin change per litre (MNT).** Constants in code: GAL_PER_BBL = 42,
    L_PER_GAL = 3.785411784, L_PER_BBL = GAL_PER_BBL × L_PER_GAL.
    - Diesel cost per litre: c = HO (USD/gal) / L_PER_GAL; FX S from the Bank
@@ -37,7 +41,9 @@ If any input is missing or a date has no FX rate, stop and report it.
      Δm0 = −(1 − α) × (C1 − C0). The cap level and fixed costs are constant
      within a window and cancel; say so.
    - Hedge: long h barrels of Brent per barrel of diesel bought.
-     Hedge P&L per litre H = (B1 − B0) / L_PER_BBL × S1.
+     Hedge P&L per litre H = (B1 − B0) / L_PER_BBL × S1. Units: USD/bbl
+     divided by L/bbl = USD per litre, as for C. S1 only: the futures gain
+     is paid in USD at the window end.
    - Δm(h) = Δm0 + h × H; loss ℓ_s(h) = −Δm_s(h).
 4. **Baselines:** h = 0 (no hedge) and h = 1 (100% hedge).
 5. **Closed form (check 1):** minimum-variance h* = −Cov(Δm0, H) / Var(H).
@@ -46,9 +52,10 @@ If any input is missing or a date has no FX rate, stop and report it.
    0 ≤ h ≤ 2, for β = 0.90 and β = 0.95 (A9). Report if the h bound binds.
 7. **Brute force (check 2):** for h = 0, 0.01, …, 2, compute CVaR directly
    by sorting the M losses and averaging the worst (1 − β) share of
-   probability mass (fractional weight on the boundary scenario). Take the
-   best h on the grid.
-8. **Sensitivity:** repeat 5 to 7 with raw, unadjusted returns.
+   probability mass: with k = floor((1 − β)M), the worst k losses in full
+   plus the next one weighted by (1 − β)M − k, all divided by (1 − β)M
+   (this equals the LP optimum). Take the best h on the grid.
+8. **Sensitivity:** repeat 5 to 7 with raw, unadjusted Brent returns.
 
 ## OUTPUT
 - `scripts/stage2_design.py` (rerunnable, relative paths only).
@@ -67,5 +74,7 @@ drop or align values beyond the rules above. Use only the design period.
 ## CHECKS
 - LP h and grid h agree within 0.01 for each α and β.
 - At α = 1, Δm0 = 0 for every window, so every method should give h = 0.
+- Every optimal h should scale with (1 − α): h(α) = (1 − α) × h(0), unless
+  the h bound binds.
 - State in the results whether each check passed, from the tool output.
 - Never claim a run or check succeeded unless the output shows it.

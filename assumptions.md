@@ -83,15 +83,23 @@ change it. When an assumption is replaced by a sourced fact, move it to the
 - **Affects:** what can be claimed. Results describe a stylised importer,
   not any real company's position.
 
-## A7. Futures roll adjustment: intraday return on roll days. ASSUMPTION (user decision, 2026-11-23)
+## A7. Futures roll adjustment: hedge leg only. ASSUMPTION (user decision, 2026-11-23; revised same day)
 
-- **Statement:** on the first trading day after each expected contract
-  expiry (rules in `outputs/stage1_checks.md`), the daily return is
-  Close_t / Open_t − 1 instead of Close_t / Close_{t−1} − 1. This removes
-  the overnight gap, which contains the switch between contracts.
-- **Why:** Stage 1 found mean absolute moves 1.5× to 2.3× larger on these
-  days, and every 21-day window crosses a roll.
-- **Limitation:** it also removes any genuine overnight news on those days.
+- **Statement:** for the Brent hedge leg (BZ=F), on a roll day the daily
+  return is Close_t / Open_t − 1 instead of Close_t / Close_{t−1} − 1. This
+  removes the overnight gap, which contains the switch between contracts:
+  a futures position's profit does not include it.
+- **Cost leg (HO=F):** raw Close price levels, no adjustment. The importer
+  pays the prevailing price level, not a rolled futures position.
+- **Roll days:** BZ=F: first trading day of each calendar month except
+  January, plus the last trading day of December (expiry = last UK business
+  day of the second month before the contract month; December uses the
+  second-to-last). Matches the Stage 1 roll analysis exactly.
+- **Why revised:** applying the adjustment to the cost leg too added an
+  artificial upward drift of about 1.25% a month (mean overnight gap on
+  roll days: HO −1.28%, BZ −1.24%, a backwardated market in 2021–24) and
+  pushed the CVaR hedge ratio to its upper bound.
+- **Limitation:** it also removes any genuine overnight news on roll days.
   Raw (unadjusted) returns are reported as a sensitivity.
 
 ## A8. FX pairing: same calendar date. ASSUMPTION (user decision, 2026-11-23)
