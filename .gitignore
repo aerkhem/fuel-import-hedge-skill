@@ -4,6 +4,10 @@ data/clean/*
 !data/raw/.gitkeep
 !data/clean/.gitkeep
 
+# Downloads made by the Skill's fetch.py (any case folder): not redistributed.
+runs/*/raw/
+outputs/*/raw/
+
 # Python / Jupyter
 __pycache__/
 *.pyc
