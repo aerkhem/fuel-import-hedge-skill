@@ -5,3 +5,4 @@ pandas==2.2.2
 numpy==1.26.4
 openpyxl==3.1.2
 cvxpy==1.7.3
+scipy==1.13.1  # used only by scripts/verify_stage2.py (independent check)
